@@ -1,6 +1,7 @@
 const net = require("net");
 const fs = require("fs").promises;
 const path = require("path");
+const zlib = require("zlib");
 
 let filesDirectory = null;
 
@@ -16,7 +17,6 @@ const handleRootRequest = (socket) => {
 const handleEchoRequest = (socket, urlPath, headers) => {
   const message = urlPath.substring(6);
   const contentType = "text/plain";
-  const contentLength = Buffer.byteLength(message, "utf8");
 
   const acceptEncodingHeader = headers.find((header) =>
     header.toLowerCase().startsWith("accept-encoding:")
@@ -24,17 +24,34 @@ const handleEchoRequest = (socket, urlPath, headers) => {
   const supportsGzip =
     acceptEncodingHeader && acceptEncodingHeader.includes("gzip");
 
-  socket.write("HTTP/1.1 200 OK\r\n");
-  socket.write(`Content-Type: ${contentType}\r\n`);
-  socket.write(`Content-Length: ${contentLength}\r\n`);
-
   if (supportsGzip) {
-    socket.write("Content-Encoding: gzip\r\n");
-  }
+    zlib.gzip(message, (err, compressed) => {
+      if (err) {
+        socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
+        socket.end();
+        return;
+      }
 
-  socket.write("\r\n");
-  socket.write(message);
-  socket.end();
+      const contentLength = compressed.length;
+
+      socket.write("HTTP/1.1 200 OK\r\n");
+      socket.write(`Content-Type: ${contentType}\r\n`);
+      socket.write("Content-Encoding: gzip\r\n");
+      socket.write(`Content-Length: ${contentLength}\r\n`);
+      socket.write("\r\n");
+      socket.write(compressed);
+      socket.end();
+    });
+  } else {
+    const contentLength = Buffer.byteLength(message, "utf8");
+
+    socket.write("HTTP/1.1 200 OK\r\n");
+    socket.write(`Content-Type: ${contentType}\r\n`);
+    socket.write(`Content-Length: ${contentLength}\r\n`);
+    socket.write("\r\n");
+    socket.write(message);
+    socket.end();
+  }
 };
 
 const handleUserAgentRequest = (socket, headers) => {
