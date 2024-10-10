@@ -13,16 +13,28 @@ const handleRootRequest = (socket) => {
   socket.write("HTTP/1.1 200 OK\r\n\r\n");
 };
 
-const handleEchoRequest = (socket, urlPath) => {
+const handleEchoRequest = (socket, urlPath, headers) => {
   const message = urlPath.substring(6);
   const contentType = "text/plain";
   const contentLength = Buffer.byteLength(message, "utf8");
 
+  const acceptEncodingHeader = headers.find((header) =>
+    header.toLowerCase().startsWith("accept-encoding:")
+  );
+  const supportsGzip =
+    acceptEncodingHeader && acceptEncodingHeader.includes("gzip");
+
   socket.write("HTTP/1.1 200 OK\r\n");
   socket.write(`Content-Type: ${contentType}\r\n`);
   socket.write(`Content-Length: ${contentLength}\r\n`);
+
+  if (supportsGzip) {
+    socket.write("Content-Encoding: gzip\r\n");
+  }
+
   socket.write("\r\n");
   socket.write(message);
+  socket.end();
 };
 
 const handleUserAgentRequest = (socket, headers) => {
@@ -38,6 +50,7 @@ const handleUserAgentRequest = (socket, headers) => {
   socket.write(`Content-Length: ${contentLength}\r\n`);
   socket.write("\r\n");
   socket.write(agent);
+  socket.end();
 };
 
 const handleFileRequest = async (socket, urlPath) => {
@@ -73,7 +86,6 @@ const handleFileUploadRequest = async (socket, urlPath, headers, body) => {
 
   try {
     await fs.writeFile(filePath, body);
-
     socket.write("HTTP/1.1 201 Created\r\n\r\n");
   } catch (error) {
     socket.write("HTTP/1.1 500 Internal Server Error\r\n\r\n");
@@ -100,7 +112,7 @@ const server = net.createServer((socket) => {
       if (urlPath === "/") {
         handleRootRequest(socket);
       } else if (urlPath.startsWith("/echo/")) {
-        handleEchoRequest(socket, urlPath);
+        handleEchoRequest(socket, urlPath, headers);
       } else if (urlPath === "/user-agent") {
         handleUserAgentRequest(socket, headers);
       } else if (urlPath.startsWith("/files/")) {
