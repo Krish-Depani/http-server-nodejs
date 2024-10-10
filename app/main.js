@@ -154,4 +154,6 @@ const server = net.createServer((socket) => {
   });
 });
 
-server.listen(4221, "localhost");
+server.listen(3000, "localhost", () => {
+  console.log("Server is listening on http://localhost:3000");
+});
